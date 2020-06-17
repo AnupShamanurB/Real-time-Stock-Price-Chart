@@ -10,19 +10,32 @@
     <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
         <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="/">Real-time Stock Price Chart</a>
         <form action="/" method="POST" style="width: 100%">
-            <input class="form-control form-control-dark" type="text" name="stock" placeholder="Add stock" required>
+            <input class="form-control-dark w-75" type="text" name="stock" placeholder="Add stock" required>
+            <input type="submit" value="Add" class="btn btn-dark my-2 my-sm-0">
         </form>
       </nav>
 <div class="container-fluid">
-    <form action="/" method="POST">
         <div class="row">
             <div class="col-md-2 d-none d-md-block bg-light sidebar">
                 <div class="sidebar-sticky">
-                    <input type="text" id="stocks" value="{{stocks}}" hidden>
-                    <ul>
-                        {% if stocks|length > 1%}
-                            <a href="/show/all">Compare All</a>
-                        {%endif%}
+                    <br>
+                    {% if stocks|length > 0%}
+                        <h4>Stocks:</h4>
+                        {% if stocks|length > 1 %}
+                            <ul>
+                                <a href="/show/all">Compare All</a>
+                            </ul>
+                        {%elif chartType == "bar" %}
+                            <ul>
+                                <a href="/show/{{stocks[0]}}">View line chart</a>
+                            </ul>
+                        {%else%}
+                            <ul>
+                                <a href="/show/all">View bar chart</a>
+                            </ul>
+                        {% endif %}    
+                    {% endif %}
+                    <ol>
                         {%for i in stocks%}
                         <li>
                             <a href="/show/{{i}}">{{i}}</a>
@@ -31,13 +44,25 @@
                             </button>
                         </li>
                         {%endfor%}
-                    </ul>
+                    </ol>
                 </div>
             </div>
             {% if chartType != "" %}
                 <main role="main" class="col-md-9 ml-sm-auto col-lg-10 pt-3 px-4">
-                    <input type="text" id="chartType" value="{{chartType}}" hidden>
-                    <input type="text" id="stockName" value="{{stockName}}" hidden>
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+                        <h5>{{stock}}</h5>
+                        {% if chartType == "line" %}
+                            <div class="btn-toolbar mb-2 mb-md-0">
+                                <div class="btn-group mr-2">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="location.href='/show/{{stock}}'">Current</button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="location.href='/show/{{stock}}/1d'">1D</button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="location.href='/show/{{stock}}/1m'">1M</button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="location.href='/show/{{stock}}/3m'">3M</button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="location.href='/show/{{stock}}/6m'">6M</button>
+                                </div>
+                            </div>
+                        {% endif %}
+                      </div>
                     <div class="card">
                         <div class="card-body">
                             <canvas id="canvas"></canvas>
@@ -46,7 +71,6 @@
                 </main>
             {% endif %}
         </div>
-    </form>
 </div>
 <!--suppress JSUnresolvedLibraryURL -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
@@ -55,7 +79,7 @@
 <!--suppress JSUnresolvedLibraryURL -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
 <script>
-    $(document).ready(function () {
+    function displayChart(stocks,labels,prices) {
         const config = {
             type: '',
             data: {
@@ -114,14 +138,15 @@
         const context = document.getElementById('canvas').getContext('2d');
 
 
-        var type = document.getElementById("chartType").value;
-        var stockName = document.getElementById("stockName").value;
-        var stocks = document.getElementById("stocks").value;
-        if (type == "line"){
+        var type = "{{chartType|safe}}";
+        var duration = "{{duration}}";
+        if (type == "line" &&  duration === "current"){
             config.type = "line";
             const chart = new Chart(context, config);
             const source = new EventSource("/chart-data");
-            config.data.datasets[0].backgroundColor = dynamicColors();
+            var color = dynamicColors();
+            config.data.datasets[0].backgroundColor = color
+            config.data.datasets[0].borderColor = color
             source.onmessage = function (event) {
                 const data = JSON.parse(event.data);
                 if (config.data.labels.length === 20) {
@@ -130,10 +155,11 @@
                 }
                 config.data.labels.push(data.time);
                 config.data.datasets[0].data.push(data.value);
+                config.data.datasets[0].lineTension = 0;
                 config.options.scales.xAxes[0].scaleLabel.labelString = "Time"
                 chart.update();
             }
-        } else {
+        } else if (type == "bar") {
             config.type = 'bar';
             const chart = new Chart(context, config);
             const source = new EventSource("/bar-data");
@@ -149,8 +175,27 @@
                 config.options.scales.xAxes[0].scaleLabel.labelString = "Stocks"
                 chart.update();
             }
+        } else {
+            config.type = "line";
+            const chart = new Chart(context, config);
+            var color = dynamicColors();
+            config.data.labels= labels
+            config.data.datasets[0].data = prices
+            config.data.datasets[0].backgroundColor = color;
+            config.data.datasets[0].borderColor = color;
+            config.data.datasets[0].lineTension = 0;
+            chart.update()
         }
-    });
+    }
+    var stocks = {{stocks|safe}};
+    {% if labels %}
+        var labels = {{labels|safe}};
+        var prices = {{prices|safe}};
+        $(document).ready(displayChart(stocks,labels,prices));
+    {% else %}
+        $(document).ready(displayChart(stocks,"",""));
+    {%endif%}
+        
 </script>
 </body>
 </html>

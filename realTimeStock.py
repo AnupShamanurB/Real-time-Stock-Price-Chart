@@ -21,12 +21,37 @@ def showStock(stock):
         return render_template('base.html',stocks=stocks,chartType="bar")
     global stock_chart_data
     stock_chart_data = stock
-    return render_template('base.html',stocks=stocks,chartType="line")
+    return render_template('base.html',stocks=stocks,chartType="line",stock=stock.upper(), duration="current")
+
+@application.route('/show/<stock>/<duration>', methods=["POST","GET"])
+def showStockDuration(stock,duration):
+    global stock_chart_data
+    stock_chart_data = stock
+    pre = "https://sandbox.iexapis.com/stable/stock/"
+    posta = "/chart/"
+    postb = "?token=Tsk_df26d04c4e6d418eb1f0fcb7faf953c8"
+    result = None
+    if duration == "1d":
+        result = requests.get(pre+stock_chart_data+posta+duration+postb).json()
+    elif duration == "1m":
+        result = requests.get(pre+stock_chart_data+posta+duration+postb).json()
+    elif duration == "3m":
+        result = requests.get(pre+stock_chart_data+posta+duration+postb).json()
+    elif duration == "6m":
+        result = requests.get(pre+stock_chart_data+posta+duration+postb).json()
+    labels = []
+    prices = []
+    for i in result:
+        if i["close"] and i["label"]:
+            labels.append(i["label"])
+            prices.append(i["close"])
+    return render_template('base.html',stocks=stocks,chartType="line",stock=stock.upper(), duration=duration, labels=labels, prices=prices)
+    
 
 @application.route('/delete/<stock>', methods=["POST","GET"])
 def deleteStock(stock):
-    stocks.remove(stock)
-    urls.remove(url_pre+stock+url_post)
+    stocks.remove(stock.upper())
+    urls.remove(url_pre+stock.upper()+url_post)
     if stocks:
         return render_template('base.html',stocks=stocks,chartType="bar")
     else:
@@ -39,8 +64,8 @@ def index():
     if request.method == "POST":
         stock = request.form["stock"]
         if stock not in stocks:
-            stocks.append(stock)
-            urls.append(url_pre+stock+url_post)
+            stocks.append(stock.upper())
+            urls.append(url_pre+stock.upper()+url_post)
         return render_template('base.html',stocks=stocks, chartType="bar")
     else:
         stocks = []
