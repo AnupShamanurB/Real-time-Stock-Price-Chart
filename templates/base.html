@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-time Stock Price Chart</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
+        <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="/">Real-time Stock Price Chart</a>
+        <form action="/" method="POST" style="width: 100%">
+            <input class="form-control form-control-dark" type="text" name="stock" placeholder="Add stock" required>
+        </form>
+      </nav>
+<div class="container-fluid">
+    <form action="/" method="POST">
+        <div class="row">
+            <div class="col-md-2 d-none d-md-block bg-light sidebar">
+                <div class="sidebar-sticky">
+                    <input type="text" id="stocks" value="{{stocks}}" hidden>
+                    <ul>
+                        {% if stocks|length > 1%}
+                            <a href="/show/all">Compare All</a>
+                        {%endif%}
+                        {%for i in stocks%}
+                        <li>
+                            <a href="/show/{{i}}">{{i}}</a>
+                            <button type="button" class="close" aria-label="Close" onclick="location.href='/delete/{{i}}'">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </li>
+                        {%endfor%}
+                    </ul>
+                </div>
+            </div>
+            {% if chartType != "" %}
+                <main role="main" class="col-md-9 ml-sm-auto col-lg-10 pt-3 px-4">
+                    <input type="text" id="chartType" value="{{chartType}}" hidden>
+                    <input type="text" id="stockName" value="{{stockName}}" hidden>
+                    <div class="card">
+                        <div class="card-body">
+                            <canvas id="canvas"></canvas>
+                        </div>
+                    </div>
+                </main>
+            {% endif %}
+        </div>
+    </form>
+</div>
+<!--suppress JSUnresolvedLibraryURL -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+<!--suppress JSUnresolvedLibraryURL -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/js/bootstrap.min.js"></script>
+<!--suppress JSUnresolvedLibraryURL -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
+<script>
+    $(document).ready(function () {
+        const config = {
+            type: '',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: "",
+                    backgroundColor: '',
+                    borderColor: '',
+                    data: [],
+                    fill: false,
+                }],
+            },
+            options: {
+                legend: {
+                    display: false
+                },
+                responsive: true,
+                title: {
+                    display: true,
+                    text: ''
+                },
+                tooltips: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                hover: {
+                    mode: 'nearest',
+                    intersect: true
+                },
+                scales: {
+                    xAxes: [{
+                        display: true,
+                        scaleLabel: {
+                            display: true,
+                            labelString: ''
+                        }
+                    }],
+                    yAxes: [{
+                        display: true,
+                        scaleLabel: {
+                            display: true,
+                            labelString: 'Price'
+                        }
+                    }]
+                }
+            }
+        };
+
+        var dynamicColors = function() {
+            var r = Math.floor(Math.random() * 255);
+            var g = Math.floor(Math.random() * 255);
+            var b = Math.floor(Math.random() * 255);
+            return "rgb(" + r + "," + g + "," + b + ")";
+         };
+
+        const context = document.getElementById('canvas').getContext('2d');
+
+
+        var type = document.getElementById("chartType").value;
+        var stockName = document.getElementById("stockName").value;
+        var stocks = document.getElementById("stocks").value;
+        if (type == "line"){
+            config.type = "line";
+            const chart = new Chart(context, config);
+            const source = new EventSource("/chart-data");
+            config.data.datasets[0].backgroundColor = dynamicColors();
+            source.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                if (config.data.labels.length === 20) {
+                    config.data.labels.shift();
+                    config.data.datasets[0].data.shift();
+                }
+                config.data.labels.push(data.time);
+                config.data.datasets[0].data.push(data.value);
+                config.options.scales.xAxes[0].scaleLabel.labelString = "Time"
+                chart.update();
+            }
+        } else {
+            config.type = 'bar';
+            const chart = new Chart(context, config);
+            const source = new EventSource("/bar-data");
+            var colors = [];
+            for (i=0; i<stocks.length; i++){
+                    colors.push(dynamicColors())
+                }
+            config.data.datasets[0].backgroundColor = colors;
+            source.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                config.data.labels = data.stocks;
+                config.data.datasets[0].data = data.value;
+                config.options.scales.xAxes[0].scaleLabel.labelString = "Stocks"
+                chart.update();
+            }
+        }
+    });
+</script>
+</body>
+</html>
