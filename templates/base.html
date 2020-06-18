@@ -10,7 +10,12 @@
     <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
         <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="/">Real-time Stock Price Chart</a>
         <form action="/" method="POST" style="width: 100%">
-            <input class="form-control-dark w-75" type="text" name="stock" placeholder="Add stock" required>
+            <input class="form-control-dark w-75" type="text" list="AllStocks" name="stock" placeholder="Add stock" required>
+            <datalist id="AllStocks">
+                {%for i in allStocks%}
+                <option value="{{i[0]}} or {{i[1]}}">
+                {%endfor%}
+            </datalist>
             <input type="submit" value="Add" class="btn btn-dark my-2 my-sm-0">
         </form>
       </nav>
