@@ -3,11 +3,18 @@ import time
 import requests
 import pandas as pd
 from datetime import datetime
-from flask import Flask, Response, render_template, request, current_app, session
-from flask_caching import Cache
+from flask import Flask, Response, render_template, request, session, stream_with_context
+from flask_session import Session
+import redis
 
 application = Flask(__name__)
-cache = Cache(application, config={"CACHE_TYPE": "simple"})
+application.config['SECRET_KEY'] = "edplus"
+application.config['SESSION_TYPE'] = 'redis'
+application.config['SESSION_REDIS'] = redis.from_url('redis://127.0.0.1:6379')
+application.config["SESSION_PERMANENT"] = False
+application.config["SESSION_TYPE"] = "filesystem"
+Session(application)
+
 url_pre = "https://sandbox.iexapis.com/stable/stock/"
 url_post = "/price?token=Tsk_df26d04c4e6d418eb1f0fcb7faf953c8"
 
@@ -20,30 +27,29 @@ def generate_all_stocks():
     other.columns = ["Symbol", "Security Name"]
     allStocks = pd.concat([nasdaq, other]).drop_duplicates().reset_index(drop=True)
     allStocks = allStocks.values.tolist()
-    cache.set('allStocks', allStocks, timeout=5 * 60)
+    session["allStocks"] = allStocks
 
 
 @application.route('/show/<stock>', methods=["POST", "GET"])
 def show_stock(stock):
-    allStocks = cache.get("allStocks")
-    stocks = cache.get("stocks")
-    cache.set('allStocks', allStocks, timeout=5 * 60)
-    cache.set('stocks', stocks, timeout=5 * 60)
+    allStocks = session.get("allStocks")
+    stocks = session.get("stocks")
+    session["stocks"] = stocks
     if stock == "all":
         return render_template('base.html', allStocks=allStocks, stocks=stocks, chartType="bar")
     stock = stock.split("or")[0].strip()
-    cache.set('stock_chart_data', stock, timeout=5 * 60)    
+    session["stock_chart_data"] = stock    
     return render_template('base.html', allStocks=allStocks, stocks=stocks, chartType="line", stock=stock.upper(),
                            duration="current")
 
 
 @application.route('/show/<stock>/<duration>', methods=["POST", "GET"])
 def show_stock_duration(stock, duration):
-    allStocks = cache.get("allStocks")
-    stocks = cache.get("stocks")
+    allStocks = session.get("allStocks")
+    stocks = session.get("stocks")
     stock = stock.split("or")[0].strip()
-    cache.set('stock_chart_data', stock, timeout=5 * 60)
-    stock_chart_data = cache.get("stock_chart_data")
+    session["stock_chart_data"] = stock
+    stock_chart_data = session.get("stock_chart_data")
     pre = "https://sandbox.iexapis.com/stable/stock/"
     posta = "/chart/"
     postb = "?token=Tsk_df26d04c4e6d418eb1f0fcb7faf953c8"
@@ -68,15 +74,15 @@ def show_stock_duration(stock, duration):
 
 @application.route('/delete/<stock>', methods=["POST", "GET"])
 def delete_stock(stock):
-    allStocks = cache.get("allStocks")
-    stocks = cache.get("stocks")
-    urls = cache.get("urls")
+    allStocks = session.get("allStocks")
+    stocks = session.get("stocks")
+    urls = session.get("urls")
     stock = stock.split("or")[0].strip()
     if stock.upper() in stocks:
         stocks.remove(stock.upper())
         urls.remove(url_pre + stock.upper() + url_post)
-    cache.set('stocks', stocks, timeout=5 * 60)
-    cache.set('urls', urls, timeout=5 * 60)
+    session["stocks"] = stocks
+    session["urls"] = urls
     if stocks:
         return render_template('base.html', allStocks=allStocks, stocks=stocks, chartType="bar")
     else:
@@ -86,36 +92,42 @@ def delete_stock(stock):
 @application.route('/', methods=["POST", "GET"])
 def index():
     if request.method == "POST":
-        allStocks = cache.get("allStocks")
-        stocks = cache.get("stocks")
-        urls = cache.get("urls")
+        allStocks = session.get("allStocks")
+        stocks = session.get("stocks")
+        urls = session.get("urls")
         stock = request.form["stock"]
         stock = stock.split("or")[0].strip()
         if stock.upper() not in stocks:
             stocks.append(stock.upper())
             urls.append(url_pre + stock.upper() + url_post)
-        cache.set('stocks', stocks, timeout=5 * 60)
-        cache.set('urls', urls, timeout=5 * 60)
+        session["stocks"] = stocks
+        session["urls"] = urls
         return render_template('base.html', stocks=stocks, allStocks=allStocks, chartType="bar")
     else:
         generate_all_stocks()
-        allStocks = cache.get("allStocks")
-        cache.set('stocks', [], timeout=5 * 60)
-        cache.set('urls', [], timeout=5 * 60)
+        allStocks = session.get("allStocks")
+        session["stocks"] = []
+        session["urls"] = []
         return render_template('base.html', allStocks=allStocks, chartType="")
 
 
 @application.route('/chart-data')
 def chart_data():
+    @stream_with_context
     def generate_chart_data():
         while True:
-            stock_chart_data = cache.get("stock_chart_data")
+            stock_chart_data = session.get("stock_chart_data")
             if stock_chart_data != "":
-                json_data = json.dumps(
-                    {'time': datetime.now().strftime('%H:%M:%S'),
-                     'value': requests.get(url_pre + stock_chart_data + url_post).json()})
-                yield f"data:{json_data}\n\n"
-                time.sleep(5)
+                try:
+                    value = requests.get(url_pre + stock_chart_data + url_post).json()
+                except:
+                    value = 0
+                finally:
+                    json_data = json.dumps(
+                        {'time': datetime.now().strftime('%H:%M:%S'),
+                        'value': value})
+                    yield f"data:{json_data}\n\n"
+                    time.sleep(5)
             else:
                 return ""
 
@@ -125,12 +137,16 @@ def chart_data():
 @application.route('/bar-data')
 def bar_data():
     def tester(url):
-        return requests.get(url).json()
+        try:
+            return requests.get(url).json()
+        except:
+            return 0
 
+    @stream_with_context
     def generate_chart_data():
         while True:
-            stocks = cache.get("stocks")
-            urls = cache.get("urls")
+            stocks = session.get("stocks")
+            urls = session.get("urls")
             json_data = json.dumps(
                 {'stocks': list(stocks), 'value': list(map(tester, urls))})
             yield f"data:{json_data}\n\n"
@@ -140,4 +156,4 @@ def bar_data():
 
 
 if __name__ == '__main__':
-    application.run(debug=True, threaded=True)
+    application.run(debug=True)
