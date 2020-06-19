@@ -3,20 +3,13 @@ import time
 import requests
 import pandas as pd
 from datetime import datetime
-
-from flask import Flask, Response, render_template, request, current_app
-# from werkzeug.contrib.cache import MemcachedCache
-# cache = MemcachedCache(['127.0.0.1:11211'])
+from flask import Flask, Response, render_template, request, current_app, session
 from flask_caching import Cache
 
 application = Flask(__name__)
 cache = Cache(application, config={"CACHE_TYPE": "simple"})
-# stocks = []
-# urls = []
 url_pre = "https://sandbox.iexapis.com/stable/stock/"
 url_post = "/price?token=Tsk_df26d04c4e6d418eb1f0fcb7faf953c8"
-# stock_chart_data = ""
-# allStocks = None
 
 
 def generate_all_stocks():
@@ -34,6 +27,8 @@ def generate_all_stocks():
 def show_stock(stock):
     allStocks = cache.get("allStocks")
     stocks = cache.get("stocks")
+    cache.set('allStocks', allStocks, timeout=5 * 60)
+    cache.set('stocks', stocks, timeout=5 * 60)
     if stock == "all":
         return render_template('base.html', allStocks=allStocks, stocks=stocks, chartType="bar")
     stock = stock.split("or")[0].strip()
@@ -77,8 +72,9 @@ def delete_stock(stock):
     stocks = cache.get("stocks")
     urls = cache.get("urls")
     stock = stock.split("or")[0].strip()
-    stocks.remove(stock.upper())
-    urls.remove(url_pre + stock.upper() + url_post)
+    if stock.upper() in stocks:
+        stocks.remove(stock.upper())
+        urls.remove(url_pre + stock.upper() + url_post)
     cache.set('stocks', stocks, timeout=5 * 60)
     cache.set('urls', urls, timeout=5 * 60)
     if stocks:
@@ -94,23 +90,24 @@ def index():
         stocks = cache.get("stocks")
         urls = cache.get("urls")
         stock = request.form["stock"]
+        stock = stock.split("or")[0].strip()
         if stock.upper() not in stocks:
-            stock = stock.split("or")[0].strip()
             stocks.append(stock.upper())
             urls.append(url_pre + stock.upper() + url_post)
-            cache.set('stocks', stocks, timeout=5 * 60)
-            cache.set('urls', urls, timeout=5 * 60)
+        cache.set('stocks', stocks, timeout=5 * 60)
+        cache.set('urls', urls, timeout=5 * 60)
         return render_template('base.html', stocks=stocks, allStocks=allStocks, chartType="bar")
     else:
         generate_all_stocks()
+        allStocks = cache.get("allStocks")
         cache.set('stocks', [], timeout=5 * 60)
         cache.set('urls', [], timeout=5 * 60)
-        return render_template('base.html', chartType="")
+        return render_template('base.html', allStocks=allStocks, chartType="")
 
 
 @application.route('/chart-data')
 def chart_data():
-    def generate_random_data():
+    def generate_chart_data():
         while True:
             stock_chart_data = cache.get("stock_chart_data")
             if stock_chart_data != "":
@@ -122,7 +119,7 @@ def chart_data():
             else:
                 return ""
 
-    return Response(generate_random_data(), mimetype='text/event-stream')
+    return Response(generate_chart_data(), mimetype='text/event-stream')
 
 
 @application.route('/bar-data')
@@ -130,7 +127,7 @@ def bar_data():
     def tester(url):
         return requests.get(url).json()
 
-    def generate_random_data():
+    def generate_chart_data():
         while True:
             stocks = cache.get("stocks")
             urls = cache.get("urls")
@@ -139,7 +136,7 @@ def bar_data():
             yield f"data:{json_data}\n\n"
             time.sleep(5)
 
-    return Response(generate_random_data(), mimetype='text/event-stream')
+    return Response(generate_chart_data(), mimetype='text/event-stream')
 
 
 if __name__ == '__main__':
