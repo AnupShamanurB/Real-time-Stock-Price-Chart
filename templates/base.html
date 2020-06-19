@@ -164,7 +164,7 @@
             let color = dynamicColors();
             config.data.datasets[0].backgroundColor = color
             config.data.datasets[0].borderColor = color
-            source.onmessage = function (event) {
+            source.addEventListener("message", function(event) {
                 const data = JSON.parse(event.data);
                 if (config.data.labels.length === 20) {
                     config.data.labels.shift();
@@ -175,7 +175,7 @@
                 config.data.datasets[0].lineTension = 0;
                 config.options.scales.xAxes[0].scaleLabel.labelString = "Time"
                 chart.update();
-            }
+            });
         } else if (type === "bar") {
             config.type = 'bar';
             const chart = new Chart(context, config);
@@ -185,13 +185,13 @@
                 colors.push(dynamicColors())
             }
             config.data.datasets[0].backgroundColor = colors;
-            source.onmessage = function (event) {
+            source.addEventListener("message", function(event) {
                 const data = JSON.parse(event.data);
                 config.data.labels = data.stocks;
                 config.data.datasets[0].data = data.value;
                 config.options.scales.xAxes[0].scaleLabel.labelString = "Stocks"
                 chart.update();
-            }
+            });
         } else {
             config.type = "line";
             const chart = new Chart(context, config);
