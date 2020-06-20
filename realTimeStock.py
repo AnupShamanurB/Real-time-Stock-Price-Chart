@@ -20,6 +20,10 @@ url_post = "/price?token=Tsk_df26d04c4e6d418eb1f0fcb7faf953c8"
 
 
 def generate_all_stocks():
+    """
+    Loads the list of all the common stocks to the session from NASDAQ listed and other listed files.
+    :return:It updates the session variable "allStocks".
+    """
     nasdaq = pd.read_csv("stocks/nasdaqListed.txt", delimiter="|")
     other = pd.read_csv("stocks/otherListed.txt", delimiter="|")
     nasdaq = nasdaq[["Symbol", "Security Name"]]
@@ -30,21 +34,32 @@ def generate_all_stocks():
     session["allStocks"] = allStocks
 
 
-@application.route('/show/<stock>', methods=["POST", "GET"])
+@application.route('/show/<stock>')
 def show_stock(stock):
+    """
+    Updates the stock variable with the required stock.
+    :param stock: The stock which is selected by the user.
+    :return: It renders the line cart for the particular stock.
+    """
     allStocks = session.get("allStocks")
     stocks = session.get("stocks")
     session["stocks"] = stocks
     if stock == "all":
         return render_template('base.html', allStocks=allStocks, stocks=stocks, chartType="bar")
     stock = stock.split("or")[0].strip()
-    session["stock_chart_data"] = stock    
+    session["stock_chart_data"] = stock
     return render_template('base.html', allStocks=allStocks, stocks=stocks, chartType="line", stock=stock.upper(),
                            duration="current")
 
 
-@application.route('/show/<stock>/<duration>', methods=["POST", "GET"])
+@application.route('/show/<stock>/<duration>')
 def show_stock_duration(stock, duration):
+    """
+    Updates the stock variable with the required stock.
+    :param stock: The stock which is selected by the user.
+    :param duration: The duration of the data requested by the user for the chart.
+    :return: Renders the line cart for the particular stock with the data for the selected duration.
+    """
     allStocks = session.get("allStocks")
     stocks = session.get("stocks")
     stock = stock.split("or")[0].strip()
@@ -72,8 +87,13 @@ def show_stock_duration(stock, duration):
                            duration=duration, labels=labels, prices=prices)
 
 
-@application.route('/delete/<stock>', methods=["POST", "GET"])
+@application.route('/delete/<stock>')
 def delete_stock(stock):
+    """
+    Deletes the stock from the session variable "stocks" and its url from "urls".
+    :param stock: Name of the stock which user selected to delete.
+    :return: Updates session variables "stock" and "urls".
+    """
     allStocks = session.get("allStocks")
     stocks = session.get("stocks")
     urls = session.get("urls")
@@ -91,6 +111,12 @@ def delete_stock(stock):
 
 @application.route('/', methods=["POST", "GET"])
 def index():
+    """
+    Renders the landing page and initializes all the session variables when a get request is sent.
+    When a post request is sent it updates the session variable "stocks" and "urls" based on the given stock name and
+    renders the bar chart.
+    :return: Renders landing page or bar chart based on the type of request sent.
+    """
     if request.method == "POST":
         allStocks = session.get("allStocks")
         stocks = session.get("stocks")
@@ -113,6 +139,11 @@ def index():
 
 @application.route('/chart-data')
 def chart_data():
+    """
+    Contains a generator function for line chart which keeps sending the data for line chart for the stock in the
+    session variable "stock_chart_data".
+    :return: Price of particular stock every 5 seconds.
+    """
     @stream_with_context
     def generate_chart_data():
         while True:
@@ -125,7 +156,7 @@ def chart_data():
                 finally:
                     json_data = json.dumps(
                         {'time': datetime.now().strftime('%H:%M:%S'),
-                        'value': value})
+                         'value': value})
                     yield f"data:{json_data}\n\n"
                     time.sleep(5)
             else:
@@ -136,6 +167,11 @@ def chart_data():
 
 @application.route('/bar-data')
 def bar_data():
+    """
+    Contains a generator function for bar chart which keeps sending the data for all the stocks in the
+    session variable "stocks".
+    :return: Prices of all the stocks as a list every 5 seconds.
+    """
     def tester(url):
         try:
             return requests.get(url).json()
